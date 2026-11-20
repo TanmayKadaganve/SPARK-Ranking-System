@@ -1,0 +1,6 @@
+Django>=5.2,<7.0
+django-axes[ipware]>=8.3.1,<9; python_version < "3.11"
+django-axes[ipware]>=9,<10; python_version >= "3.11"
+Pillow>=10.0
+psycopg2-binary>=2.9
+python-dotenv>=1.0

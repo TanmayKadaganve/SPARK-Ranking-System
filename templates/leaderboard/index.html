@@ -1,0 +1,133 @@
+{% load static ranking_tags %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Transparent monthly and all-time SPARK club member rankings.">
+  <title>SPARK Member Leaderboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  <script src="{% static 'js/script.js' %}" defer></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="brand" href="{% url 'leaderboard:index' %}" aria-label="SPARK leaderboard home">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <span class="brand-copy"><strong>SPARK</strong><span>Monthly &amp; Overall Rankings</span></span>
+      </a>
+      <span class="club-caption">Skills · Practice · Advancement · Research · Knowledge</span>
+    </header>
+
+    <main>
+      <section class="leaderboard-heading" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> SPARK CLUB · {{ period_label }}</p>
+          <h1 id="page-title">SPARK Member Leaderboard</h1>
+          <p class="intro">A clear record of the work, learning, and teamwork that move our club forward.</p>
+        </div>
+        <div class="period-badge"><span class="badge-label">Ranking period</span><strong>{{ period_label }}</strong></div>
+      </section>
+
+      <form class="filter-bar" method="get" action="{% url 'leaderboard:index' %}" role="search">
+        <label class="search-control">
+          <span class="sr-only">Search members</span>
+          <svg aria-hidden="true" viewBox="0 0 20 20"><circle cx="8.8" cy="8.8" r="5.8"></circle><path d="m13.2 13.2 4 4"></path></svg>
+          <input type="search" name="q" value="{{ search }}" placeholder="Search member name…" autocomplete="off">
+        </label>
+        <label class="select-control">
+          <span class="sr-only">Semester</span>
+          <select name="semester" aria-label="Filter by semester">
+            <option value="">All semesters</option>
+            {% for value in semesters %}<option value="{{ value }}" {% if selected_semester == value|stringformat:"s" %}selected{% endif %}>Semester {{ value }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="select-control">
+          <span class="sr-only">Team</span>
+          <select name="team" aria-label="Filter by team">
+            <option value="">All teams</option>
+            {% for value in teams %}<option value="{{ value }}" {% if selected_team == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="select-control mode-control">
+          <span class="sr-only">Ranking view</span>
+          <select name="mode" aria-label="Choose ranking view">
+            <option value="overall" {% if mode == 'overall' %}selected{% endif %}>Overall</option>
+            <option value="monthly" {% if mode == 'monthly' %}selected{% endif %}>Monthly</option>
+          </select>
+        </label>
+        {% if mode == 'monthly' %}
+        <label class="select-control month-control">
+          <span class="sr-only">Month</span>
+          <select name="month" aria-label="Choose ranking month">
+            {% for value, label in months %}<option value="{{ value }}" {% if month == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endif %}
+        <button class="apply-button" type="submit">Apply</button>
+      </form>
+
+      <section class="ranking-section" aria-label="Member rankings">
+        <div class="table-meta">
+          <span><strong>{{ page_obj.paginator.count }}</strong> active member{{ page_obj.paginator.count|pluralize }}</span>
+          <span class="score-note">Points are cumulative for overall rankings and period-based for monthly rankings.</span>
+        </div>
+        <div class="table-scroll" tabindex="0" aria-label="Scrollable member ranking table">
+          <table class="ranking-table">
+            <thead>
+              <tr>
+                <th scope="col" class="rank-col">Rank</th>
+                <th scope="col" class="member-col">Member</th>
+                <th scope="col">USN</th>
+                <th scope="col">Team</th>
+                <th scope="col">Semester</th>
+                <th scope="col" class="number-col">Teaching</th>
+                <th scope="col" class="number-col">Projects</th>
+                <th scope="col" class="number-col">Attendance</th>
+                <th scope="col" class="number-col">Discipline</th>
+                <th scope="col" class="number-col">Events</th>
+                <th scope="col" class="number-col">Skills</th>
+                <th scope="col" class="total-col">Total points</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in page_obj %}
+              <tr class="member-row{% if row.rank <= 3 %} top-three rank-{{ row.rank }}{% endif %}">
+                <td class="rank-cell"><span class="rank-number">{{ row.rank|stringformat:"02d" }}</span>{% if row.rank == 1 %}<span class="sr-only"> first place</span>{% elif row.rank == 2 %}<span class="sr-only"> second place</span>{% elif row.rank == 3 %}<span class="sr-only"> third place</span>{% endif %}</td>
+                <th scope="row" class="member-name">{{ row.member.full_name }}</th>
+                <td class="muted-cell">{% if show_usn %}{{ row.member.usn }}{% else %}<span aria-label="USN not publicly shared">—</span>{% endif %}</td>
+                <td>{{ row.member.team_name|default:"—" }}</td>
+                <td>{{ row.member.semester }}</td>
+                <td class="number-cell">{{ row.scores.teaching|points }}</td>
+                <td class="number-cell">{{ row.scores.projects|points }}</td>
+                <td class="number-cell">{{ row.scores.attendance|points }}</td>
+                <td class="number-cell">{{ row.scores.discipline|points }}</td>
+                <td class="number-cell">{{ row.scores.events|points }}</td>
+                <td class="number-cell">{{ row.scores.skills|points }}</td>
+                <td class="total-cell"><span>{{ row.total|points }}</span></td>
+              </tr>
+              {% empty %}
+              <tr><td class="empty-state" colspan="12">No active members match these filters.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if page_obj.paginator.num_pages > 1 %}
+        <nav class="pagination" aria-label="Leaderboard pages">
+          <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+          <div class="page-actions">
+            {% if page_obj.has_previous %}<a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.previous_page_number }}" rel="prev">Previous</a>{% endif %}
+            {% if page_obj.has_next %}<a href="?{% if query_string %}{{ query_string }}&amp;{% endif %}page={{ page_obj.next_page_number }}" rel="next">Next</a>{% endif %}
+          </div>
+        </nav>
+        {% endif %}
+      </section>
+    </main>
+
+    <footer class="site-footer"><span>SPARK · Skills, Practice, Advancement, Research, Knowledge</span><span>Every contribution counts.</span></footer>
+  </div>
+</body>
+</html>
