@@ -1,10 +1,13 @@
+# --- Enhanced admin configuration for clarity and usability ---
+
 from django.contrib import admin
 from django.utils.html import format_html, format_html_join
+from django.http import HttpResponse
+import csv
 
 from .models import CATEGORY_DEFINITIONS, Member, RankingPeriod, ScoreCategory, ScoreEntry
 from .number_fields import format_points
 from .services import build_rankings
-
 
 admin.site.site_header = "SPARK Club Administration"
 admin.site.site_title = "SPARK Admin"
@@ -13,19 +16,48 @@ admin.site.index_title = "Members and score management"
 
 @admin.register(Member)
 class MemberAdmin(admin.ModelAdmin):
-    list_display = ("full_name", "usn", "semester", "branch", "team_name", "current_total", "is_active")
-    list_filter = ("is_active", "semester", "branch", "team_name")
+    list_display = (
+        "profile_image_thumb",
+        "full_name",
+        "usn",
+        "semester",
+        "branch",
+        "team_name",
+        "current_total",
+        "current_rank",
+        "is_active",
+    )
+    list_filter = ("is_active", "semester", "branch", "team_name", "date_joined")
     search_fields = ("full_name", "usn")
     ordering = ("full_name", "usn")
     list_per_page = 50
-    readonly_fields = ("created_at", "current_rank", "score_breakdown")
+    readonly_fields = (
+        "created_at",
+        "current_rank",
+        "score_breakdown",
+        "profile_image_thumb",
+    )
     fieldsets = (
-        ("Member", {"fields": ("full_name", "usn", "profile_image")} ),
-        ("Club details", {"fields": ("semester", "branch", "team_name", "date_joined", "is_active")} ),
-        ("Current ranking", {"fields": ("current_rank", "score_breakdown")} ),
+        ("Member", {"fields": ("full_name", "usn", "profile_image")}),
+        ("Club details", {"fields": ("semester", "branch", "team_name", "date_joined", "is_active")}),
+        ("Current ranking", {"fields": ("current_rank", "score_breakdown")}),
         ("Record", {"fields": ("created_at",), "classes": ("collapse",)}),
     )
-    actions = ("deactivate_members", "activate_members")
+    actions = ("deactivate_members", "activate_members", "export_as_csv")
+
+    # -----------------------------------------------------------------
+    # Helper methods for display
+    # -----------------------------------------------------------------
+    def profile_image_thumb(self, obj):
+        if obj.profile_image:
+            return format_html(
+                "<img src='{}' style='height:30px; width:auto;' />",
+                obj.profile_image.url,
+            )
+        return "—"
+
+    profile_image_thumb.short_description = "Photo"
+    profile_image_thumb.allow_tags = True
 
     def changelist_view(self, request, extra_context=None):
         self._ranking_cache = {row["member"].pk: row for row in build_rankings(include_inactive=True)}
@@ -56,7 +88,10 @@ class MemberAdmin(admin.ModelAdmin):
             "<tr><th scope='row'>{}</th><td>{}</td></tr>",
             ((label, format_points(row["scores"].get(code, 0))) for code, label in labels),
         )
-        rows += format_html("<tr class='spark-total'><th scope='row'>TOTAL</th><td>{}</td></tr>", format_points(row["total"]))
+        rows += format_html(
+            "<tr class='spark-total'><th scope='row'>TOTAL</th><td>{}</td></tr>",
+            format_points(row["total"]),
+        )
         return format_html("<table class='spark-breakdown'>{}</table>", rows)
 
     @admin.action(description="Deactivate selected members")
@@ -66,6 +101,17 @@ class MemberAdmin(admin.ModelAdmin):
     @admin.action(description="Activate selected members")
     def activate_members(self, request, queryset):
         queryset.update(is_active=True)
+
+    @admin.action(description="Export selected members as CSV")
+    def export_as_csv(self, request, queryset):
+        field_names = [field.name for field in Member._meta.fields]
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename=members.csv'
+        writer = csv.writer(response)
+        writer.writerow(field_names)
+        for obj in queryset:
+            writer.writerow([getattr(obj, f) for f in field_names])
+        return response
 
 
 @admin.register(ScoreCategory)
@@ -85,19 +131,49 @@ class ScoreCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(ScoreEntry)
 class ScoreEntryAdmin(admin.ModelAdmin):
-    list_display = ("date_awarded", "created_at", "member", "category", "formatted_points", "reason_preview", "awarded_by")
-    list_filter = ("category", ("date_awarded", admin.DateFieldListFilter), "member__semester", "member__team_name")
-    search_fields = ("member__full_name", "member__usn", "reason", "awarded_by__username", "awarded_by__first_name", "awarded_by__last_name")
+    list_display = (
+        "date_awarded",
+        "created_at",
+        "member",
+        "category",
+        "formatted_points",
+        "reason_preview",
+        "awarded_by",
+    )
+    list_filter = (
+        "category",
+        ("date_awarded", admin.DateFieldListFilter),
+        "member__semester",
+        "member__team_name",
+        "member__is_active",
+    )
+    search_fields = (
+        "member__full_name",
+        "member__usn",
+        "reason",
+        "awarded_by__username",
+        "awarded_by__first_name",
+        "awarded_by__last_name",
+    )
     date_hierarchy = "date_awarded"
     ordering = ("-date_awarded", "-created_at")
     list_select_related = ("member", "category", "awarded_by")
     list_per_page = 50
     autocomplete_fields = ("member",)
-    fields = ("member", "category", "points", "reason", "date_awarded", "awarded_by", "ranking_period", "created_at")
+    fields = (
+        "member",
+        "category",
+        "points",
+        "reason",
+        "date_awarded",
+        "awarded_by",
+        "ranking_period",
+        "created_at",
+    )
+    actions = ("export_as_csv",)
 
     def get_form(self, request, obj=None, **kwargs):
         from .forms import ScoreEntryAdminForm
-
         kwargs["form"] = ScoreEntryAdminForm
         return super().get_form(request, obj, **kwargs)
 
@@ -123,6 +199,17 @@ class ScoreEntryAdmin(admin.ModelAdmin):
     @admin.display(description="Reason")
     def reason_preview(self, obj):
         return obj.reason if len(obj.reason) <= 100 else obj.reason[:97] + "…"
+
+    @admin.action(description="Export selected scores as CSV")
+    def export_as_csv(self, request, queryset):
+        field_names = [field.name for field in ScoreEntry._meta.fields]
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename=score_entries.csv'
+        writer = csv.writer(response)
+        writer.writerow(field_names)
+        for obj in queryset:
+            writer.writerow([getattr(obj, f) for f in field_names])
+        return response
 
 
 @admin.register(RankingPeriod)
